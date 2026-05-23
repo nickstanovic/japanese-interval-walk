@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -19,8 +20,6 @@ import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 import kotlin.math.max
 
@@ -30,18 +29,13 @@ class IntervalService : Service() {
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
-    private val speechAttributes = AudioAttributes.Builder()
+    private val voiceAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
 
     private var wakeLock: PowerManager.WakeLock? = null
-    private var tts: TextToSpeech? = null
-    private val pendingSpeech = ArrayDeque<SpeechRequest>()
-    private val speechCompletionCallbacks = mutableMapOf<String, () -> Unit>()
-    private var ttsReady = false
-    private var speechUnavailable = false
-    private var speechSequence = 0
+    private var voicePlayer: MediaPlayer? = null
     private var running = false
     private var paused = false
     private var slow = true
@@ -49,11 +43,6 @@ class IntervalService : Service() {
     private var completedIntervals = 0
     private var intervalEndElapsed = 0L
     private var remainingMs = INTERVAL_MS
-
-    private data class SpeechRequest(
-        val text: String,
-        val onComplete: (() -> Unit)?,
-    )
 
     private val tickRunnable = object : Runnable {
         override fun run() {
@@ -66,7 +55,7 @@ class IntervalService : Service() {
                 remainingMs = INTERVAL_MS
                 intervalEndElapsed = SystemClock.elapsedRealtime() + INTERVAL_MS
                 playPaceCue(slow)
-                speakLine(if (slow) SLOW_LINE else FAST_LINE)
+                playVoiceCue(if (slow) R.raw.voice_slow else R.raw.voice_fast)
             } else {
                 remainingMs = left
             }
@@ -80,7 +69,6 @@ class IntervalService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        initializeSpeech()
         wakeLock = (getSystemService(POWER_SERVICE) as? PowerManager)
             ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JapaneseIntervalWalk:timer")
             ?.apply { setReferenceCounted(false) }
@@ -106,7 +94,7 @@ class IntervalService : Service() {
         handler.removeCallbacks(tickRunnable)
         cancelVibration()
         releaseWakeLock()
-        shutdownSpeech()
+        releaseVoicePlayer()
         super.onDestroy()
     }
 
@@ -122,7 +110,7 @@ class IntervalService : Service() {
         promoteToForeground()
         acquireWakeLock()
         playPaceCue(slowCue = true)
-        speakLine(START_LINE)
+        playVoiceCue(R.raw.voice_start)
         handler.removeCallbacks(tickRunnable)
         handler.post(tickRunnable)
         broadcastStatus()
@@ -138,7 +126,7 @@ class IntervalService : Service() {
         paused = true
         handler.removeCallbacks(tickRunnable)
         releaseWakeLock()
-        speakLine(PAUSE_LINE)
+        playVoiceCue(R.raw.voice_pause)
         broadcastStatus()
         updateNotification()
     }
@@ -165,7 +153,6 @@ class IntervalService : Service() {
         }
         if (stopping) return
 
-        val summaryLine = buildStopSummary()
         remainingMs = currentRemainingMs()
         paused = true
         stopping = true
@@ -174,7 +161,7 @@ class IntervalService : Service() {
         releaseWakeLock()
         broadcastStatus()
         updateNotification()
-        speakLine(summaryLine, onComplete = { finishStopSession() })
+        playVoiceCue(R.raw.voice_stop, onComplete = { finishStopSession() })
         handler.postDelayed({
             if (stopping) finishStopSession()
         }, STOP_SUMMARY_FALLBACK_MS)
@@ -294,106 +281,43 @@ class IntervalService : Service() {
             ?.createNotificationChannel(channel)
     }
 
-    private fun initializeSpeech() {
-        tts = TextToSpeech(applicationContext) { status ->
-            handler.post {
-                if (status == TextToSpeech.SUCCESS) {
-                    speechUnavailable = false
-                    configureSpeechEngine()
-                    ttsReady = true
-                    drainPendingSpeech()
-                } else {
-                    speechUnavailable = true
-                    finishPendingSpeechWithoutAudio()
+    private fun playVoiceCue(resId: Int, onComplete: (() -> Unit)? = null) {
+        releaseVoicePlayer()
+        try {
+            val asset = resources.openRawResourceFd(resId) ?: run {
+                onComplete?.invoke()
+                return
+            }
+            asset.use {
+                voicePlayer = MediaPlayer().apply {
+                    setAudioAttributes(voiceAttributes)
+                    setDataSource(it.fileDescriptor, it.startOffset, it.length)
+                    setOnCompletionListener {
+                        releaseVoicePlayer()
+                        onComplete?.invoke()
+                    }
+                    setOnErrorListener { _, _, _ ->
+                        releaseVoicePlayer()
+                        onComplete?.invoke()
+                        true
+                    }
+                    prepare()
+                    start()
                 }
             }
-        }
-    }
-
-    private fun configureSpeechEngine() {
-        tts?.apply {
-            setLanguage(Locale.US)
-            voices
-                ?.filter { voice ->
-                    voice.locale.language == Locale.ENGLISH.language &&
-                        !voice.isNetworkConnectionRequired
-                }
-                ?.maxByOrNull { voice ->
-                    val localeBonus = if (voice.locale == Locale.US) 1_000 else 0
-                    val nameBonus = if (voice.name.contains("female", ignoreCase = true)) 50 else 0
-                    localeBonus + nameBonus + (voice.quality * 10) - voice.latency
-                }
-                ?.let { voice = it }
-            setPitch(1.35f)
-            setSpeechRate(1.03f)
-            setAudioAttributes(speechAttributes)
-            setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
-
-                override fun onDone(utteranceId: String?) {
-                    completeSpeech(utteranceId)
-                }
-
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) {
-                    completeSpeech(utteranceId)
-                }
-            })
-        }
-    }
-
-    private fun speakLine(text: String, onComplete: (() -> Unit)? = null) {
-        if (speechUnavailable) {
+        } catch (_: Exception) {
+            releaseVoicePlayer()
             onComplete?.invoke()
-            return
-        }
-
-        val engine = tts
-        if (!ttsReady || engine == null) {
-            pendingSpeech.clear()
-            pendingSpeech.addLast(SpeechRequest(text, onComplete))
-            return
-        }
-
-        val utteranceId = "walk_voice_${speechSequence++}"
-        if (onComplete != null) {
-            speechCompletionCallbacks[utteranceId] = onComplete
-        }
-
-        val result = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-        if (result == TextToSpeech.ERROR) {
-            completeSpeech(utteranceId)
         }
     }
 
-    private fun drainPendingSpeech() {
-        while (pendingSpeech.isNotEmpty()) {
-            val request = pendingSpeech.removeFirst()
-            speakLine(request.text, request.onComplete)
+    private fun releaseVoicePlayer() {
+        voicePlayer?.apply {
+            setOnCompletionListener(null)
+            setOnErrorListener(null)
+            release()
         }
-    }
-
-    private fun finishPendingSpeechWithoutAudio() {
-        while (pendingSpeech.isNotEmpty()) {
-            pendingSpeech.removeFirst().onComplete?.invoke()
-        }
-    }
-
-    private fun completeSpeech(utteranceId: String?) {
-        if (utteranceId == null) return
-        handler.post {
-            speechCompletionCallbacks.remove(utteranceId)?.invoke()
-        }
-    }
-
-    private fun shutdownSpeech() {
-        pendingSpeech.clear()
-        speechCompletionCallbacks.clear()
-        ttsReady = false
-        speechUnavailable = false
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
+        voicePlayer = null
     }
 
     private fun playPaceCue(slowCue: Boolean) {
@@ -449,16 +373,6 @@ class IntervalService : Service() {
         return completedIntervals * INTERVAL_MS + (INTERVAL_MS - currentRemainingMs())
     }
 
-    private fun buildStopSummary(): String {
-        val duration = formatDurationForSpeech(elapsedMs())
-        val intervalText = when (completedIntervals) {
-            0 -> "You got moving and started your interval rhythm."
-            1 -> "You finished 1 full interval."
-            else -> "You finished $completedIntervals full intervals."
-        }
-        return "Workout complete! You walked for $duration. $intervalText Great job today. I'm proud of you!"
-    }
-
     private fun broadcastStatus() {
         val status = Intent(ACTION_STATUS).apply {
             setPackage(packageName)
@@ -481,18 +395,6 @@ class IntervalService : Service() {
         return String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 
-    private fun formatDurationForSpeech(durationMs: Long): String {
-        val totalSeconds = max(0L, (durationMs + 999L) / 1000L)
-        val minutes = totalSeconds / 60L
-        val seconds = totalSeconds % 60L
-        return when {
-            minutes == 0L && seconds <= 1L -> "about 1 second"
-            minutes == 0L -> "$seconds seconds"
-            seconds == 0L -> "$minutes ${if (minutes == 1L) "minute" else "minutes"}"
-            else -> "$minutes ${if (minutes == 1L) "minute" else "minutes"} and $seconds seconds"
-        }
-    }
-
     companion object {
         const val INTERVAL_MS = 3L * 60L * 1000L
 
@@ -511,15 +413,6 @@ class IntervalService : Service() {
         const val EXTRA_INTERVAL_MS = "interval_ms"
         const val EXTRA_COMPLETED_INTERVALS = "completed_intervals"
         const val EXTRA_ELAPSED_MS = "elapsed_ms"
-
-        private const val START_LINE =
-            "Okay, let's go! Start with a sweet slow walk. Tiny steps, big energy!"
-        private const val SLOW_LINE =
-            "Nice work! Slow walk now. Breathe easy and let your legs feel happy."
-        private const val FAST_LINE =
-            "Time to sparkle! Fast walk now. Quick little steps, you've totally got this!"
-        private const val PAUSE_LINE =
-            "Nice job, let's take a break. I'll keep your interval safe right here."
 
         private const val CHANNEL_ID = "walking_timer"
         private const val NOTIFICATION_ID = 1003
