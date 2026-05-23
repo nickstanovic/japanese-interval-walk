@@ -1,0 +1,14 @@
+.gradle/
+.kotlin/
+.android-sdk/
+.tools/
+.idea/
+*.iml
+build/
+captures/
+local.properties
+app/build/
+*.apk
+emulator-*.png
+emulator-*.xml
+pixel-window.xml
