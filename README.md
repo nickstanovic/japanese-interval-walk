@@ -7,11 +7,11 @@ The timer alternates forever between:
 - 3 minutes slow walking: one long vibration cue
 - 3 minutes fast walking: two short vibration cues
 
-The app includes pause/resume so a shoe tie or sit-down rest does not consume interval time. It also plays upbeat bundled VOICEVOX voice cues for start, slow, fast, pause, and stop. The active timer runs as a foreground service with a notification, so the cadence keeps going when the screen is off.
+The app includes pause/resume so a shoe tie or sit-down rest does not consume interval time. It also plays upbeat bundled English voice cues for start, slow, fast, pause, and stop. The active timer runs as a foreground service with a notification, so the cadence keeps going when the screen is off.
 
 The app is written in Kotlin with Jetpack Compose and Material 3.
 
-Voice clips were generated locally with VOICEVOX using the voice `VOICEVOX: 満別花丸`.
+Voice clips are generated locally with a cute native-English cartoon voice, `en-US-AnaNeural`, and bundled into the APK for offline playback.
 
 ## Build
 
