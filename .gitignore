@@ -11,4 +11,6 @@ app/build/
 *.apk
 emulator-*.png
 emulator-*.xml
+voice-*.png
+voice-*.xml
 pixel-window.xml

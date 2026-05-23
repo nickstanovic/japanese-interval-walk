@@ -77,9 +77,8 @@ class MainActivity : ComponentActivity() {
                 IntervalWalkScreen(
                     state = uiState,
                     onStartStop = {
-                        if (uiState.running) {
+                        if (uiState.running && !uiState.stopping) {
                             sendServiceCommand(IntervalService.ACTION_STOP, foregroundStart = false)
-                            uiState = WalkUiState()
                         } else {
                             startWithNotificationPermission()
                         }
@@ -184,6 +183,7 @@ data class WalkUiState(
     val running: Boolean = false,
     val paused: Boolean = false,
     val slow: Boolean = true,
+    val stopping: Boolean = false,
     val remainingMs: Long = IntervalService.INTERVAL_MS,
     val intervalMs: Long = IntervalService.INTERVAL_MS,
     val completedIntervals: Int = 0,
@@ -194,6 +194,7 @@ data class WalkUiState(
 
     val statusLabel: String
         get() = when {
+            stopping -> "Wrapping up"
             !running -> "Ready"
             paused -> "Paused on ${paceLabel.lowercase(Locale.US)}"
             else -> paceLabel
@@ -201,6 +202,7 @@ data class WalkUiState(
 
     val detailLabel: String
         get() = when {
+            stopping -> "Playing your workout summary before reset."
             !running -> "Start with a slow walk."
             paused -> "Paused. Resume keeps this interval intact."
             else -> "Elapsed ${elapsedMs.formatDuration()} / current interval"
@@ -227,6 +229,7 @@ data class WalkUiState(
                 running = intent.getBooleanExtra(IntervalService.EXTRA_RUNNING, false),
                 paused = intent.getBooleanExtra(IntervalService.EXTRA_PAUSED, false),
                 slow = intent.getBooleanExtra(IntervalService.EXTRA_SLOW, true),
+                stopping = intent.getBooleanExtra(IntervalService.EXTRA_STOPPING, false),
                 remainingMs = intent.getLongExtra(IntervalService.EXTRA_REMAINING_MS, intervalMs),
                 intervalMs = intervalMs,
                 completedIntervals = intent.getIntExtra(IntervalService.EXTRA_COMPLETED_INTERVALS, 0),
@@ -349,12 +352,15 @@ private fun IntervalWalkScreen(
             ) {
                 Button(
                     onClick = onStartStop,
+                    enabled = !state.stopping,
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (state.running) Color(0xFF272D2A) else SlowGreen,
+                        disabledContainerColor = Color(0xFFBEC7C1),
+                        disabledContentColor = Color.White.copy(alpha = 0.85f),
                     ),
                 ) {
                     Text(
@@ -366,7 +372,7 @@ private fun IntervalWalkScreen(
 
                 Button(
                     onClick = onPauseResume,
-                    enabled = state.running,
+                    enabled = state.running && !state.stopping,
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),

@@ -7,7 +7,7 @@ The timer alternates forever between:
 - 3 minutes slow walking: one long vibration cue
 - 3 minutes fast walking: two short vibration cues
 
-The app includes pause/resume so a shoe tie or sit-down rest does not consume interval time. It also runs the active timer as a foreground service with a notification, so the cadence keeps going when the screen is off.
+The app includes pause/resume so a shoe tie or sit-down rest does not consume interval time. It also gives upbeat TextToSpeech voice cues for start, slow, fast, pause, and stop. On stop, the voice summarizes the workout before the timer resets. The active timer runs as a foreground service with a notification, so the cadence keeps going when the screen is off.
 
 The app is written in Kotlin with Jetpack Compose and Material 3.
 
