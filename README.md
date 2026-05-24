@@ -25,6 +25,11 @@ gradlew.bat assembleDebug
 
 The debug APK will appear under `app\build\outputs\apk\debug\`.
 
+Example local Windows setup:
+
+- `JAVA_HOME` can point at `%USERPROFILE%\.jdks\openjdk-22.0.1`
+- Android SDK platform 36 can be installed under `%LOCALAPPDATA%\Android\Sdk`
+
 ## Emulator Testing
 
 An Android 36 emulator named `Pixel_10_Pro_API_36` is configured for testing. The SDK does not currently expose a built-in Pixel 10 Pro hardware profile, so this AVD uses the closest available Google profile while keeping the Pixel 10 Pro name for the test target.
