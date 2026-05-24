@@ -11,7 +11,7 @@ The app includes pause/resume so a shoe tie or sit-down rest does not consume in
 
 The app is written in Kotlin with Jetpack Compose and Material 3.
 
-Voice clips are generated locally with a native-English expressive female voice, `en-US-AvaNeural`, tuned brighter and faster toward an upbeat coaching style, then bundled into the APK for offline playback.
+Voice clips are generated locally with a native-English expressive female voice, `en-US-AvaNeural`, then tuned with a faster pace and a subtle pitch lift toward an upbeat coaching style. The finished MP3 clips are bundled into the APK for offline playback.
 
 ## Build
 
