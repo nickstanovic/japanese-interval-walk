@@ -161,7 +161,7 @@ class IntervalService : Service() {
         releaseWakeLock()
         broadcastStatus()
         updateNotification()
-        playVoiceCue(R.raw.voice_stop, onComplete = { finishStopSession() })
+        playVoiceCue(stopSummaryCue(), onComplete = { finishStopSession() })
         handler.postDelayed({
             if (stopping) finishStopSession()
         }, STOP_SUMMARY_FALLBACK_MS)
@@ -311,6 +311,18 @@ class IntervalService : Service() {
         }
     }
 
+    private fun stopSummaryCue(): Int {
+        val cueName = if (completedIntervals > MAX_STOP_SUMMARY_INTERVALS) {
+            "voice_stop_${MAX_STOP_SUMMARY_INTERVALS}_plus"
+        } else {
+            "voice_stop_$completedIntervals"
+        }
+
+        return resources.getIdentifier(cueName, "raw", packageName)
+            .takeIf { it != 0 }
+            ?: R.raw.voice_stop
+    }
+
     private fun releaseVoicePlayer() {
         voicePlayer?.apply {
             setOnCompletionListener(null)
@@ -421,6 +433,7 @@ class IntervalService : Service() {
         private const val SLOW_CUE_MS = 1_200L
         private const val FAST_CUE_PULSE_MS = 420L
         private const val FAST_CUE_GAP_MS = 260L
-        private const val STOP_SUMMARY_FALLBACK_MS = 12_000L
+        private const val STOP_SUMMARY_FALLBACK_MS = 18_000L
+        private const val MAX_STOP_SUMMARY_INTERVALS = 40
     }
 }

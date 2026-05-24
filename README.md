@@ -11,7 +11,7 @@ The app includes pause/resume so a shoe tie or sit-down rest does not consume in
 
 The app is written in Kotlin with Jetpack Compose and Material 3.
 
-Voice clips are generated locally with Kokoro-82M's English `af_heart` voice. Kokoro-82M is listed by its upstream model card as Apache-2.0 licensed, and this app bundles only the generated MP3 cues for offline playback; it does not bundle Kokoro model weights or call any online TTS API at runtime.
+Voice clips are generated locally with Kokoro-82M's English `af_heart` voice. Kokoro-82M is listed by its upstream model card as Apache-2.0 licensed, and this app bundles only the generated MP3 cues for offline playback; it does not bundle Kokoro model weights or call any online TTS API at runtime. Stop summaries use pre-generated Kokoro clips selected by completed interval count, so the app can announce what was accomplished while staying fully offline.
 
 Voice asset attribution: generated with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), `af_heart` voice, Apache-2.0 model license.
 
