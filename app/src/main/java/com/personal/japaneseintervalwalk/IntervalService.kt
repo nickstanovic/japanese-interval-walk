@@ -41,6 +41,8 @@ class IntervalService : Service() {
     private var slow = true
     private var stopping = false
     private var completedIntervals = 0
+    private var summaryCompletedIntervals = 0
+    private var summaryElapsedMs = 0L
     private var intervalEndElapsed = 0L
     private var remainingMs = INTERVAL_MS
 
@@ -104,6 +106,8 @@ class IntervalService : Service() {
         slow = true
         stopping = false
         completedIntervals = 0
+        summaryCompletedIntervals = 0
+        summaryElapsedMs = 0L
         remainingMs = INTERVAL_MS
         intervalEndElapsed = SystemClock.elapsedRealtime() + INTERVAL_MS
 
@@ -154,6 +158,8 @@ class IntervalService : Service() {
         if (stopping) return
 
         remainingMs = currentRemainingMs()
+        summaryCompletedIntervals = completedIntervals
+        summaryElapsedMs = elapsedMs()
         paused = true
         stopping = true
         handler.removeCallbacks(tickRunnable)
@@ -161,23 +167,27 @@ class IntervalService : Service() {
         releaseWakeLock()
         broadcastStatus()
         updateNotification()
-        playVoiceCue(stopSummaryCue(), onComplete = { finishStopSession() })
+        playStopSummaryCue(onComplete = { finishStopSession() })
         handler.postDelayed({
             if (stopping) finishStopSession()
         }, STOP_SUMMARY_FALLBACK_MS)
     }
 
     private fun finishStopSession() {
+        val completed = summaryCompletedIntervals
+        val elapsed = summaryElapsedMs
         running = false
         paused = false
         slow = true
         stopping = false
         completedIntervals = 0
         remainingMs = INTERVAL_MS
+        summaryCompletedIntervals = completed
+        summaryElapsedMs = elapsed
         handler.removeCallbacks(tickRunnable)
         cancelVibration()
         releaseWakeLock()
-        broadcastStatus()
+        broadcastStatus(showSummary = true)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -209,7 +219,7 @@ class IntervalService : Service() {
             else -> pace
         }
         val text = if (stopping) {
-            "Playing your workout summary"
+            "${summaryElapsedMs.formatDuration()} walking, $summaryCompletedIntervals intervals"
         } else {
             "${currentRemainingMs().formatDuration()} remaining"
         }
@@ -311,16 +321,87 @@ class IntervalService : Service() {
         }
     }
 
-    private fun stopSummaryCue(): Int {
-        val cueName = if (completedIntervals > MAX_STOP_SUMMARY_INTERVALS) {
-            "voice_stop_${MAX_STOP_SUMMARY_INTERVALS}_plus"
-        } else {
-            "voice_stop_$completedIntervals"
+    private fun playStopSummaryCue(onComplete: () -> Unit) {
+        val cues = stopSummaryCueIds()
+        if (cues.isEmpty()) {
+            playVoiceCue(R.raw.voice_stop, onComplete)
+            return
+        }
+        playVoiceCueSequence(cues, onComplete = onComplete)
+    }
+
+    private fun playVoiceCueSequence(
+        resIds: List<Int>,
+        index: Int = 0,
+        onComplete: (() -> Unit)? = null,
+    ) {
+        if (index >= resIds.size) {
+            onComplete?.invoke()
+            return
+        }
+        playVoiceCue(resIds[index]) {
+            playVoiceCueSequence(resIds, index + 1, onComplete)
+        }
+    }
+
+    private fun stopSummaryCueIds(): List<Int> = buildList {
+        add(R.raw.voice_summary_encouragement)
+        add(R.raw.voice_summary_total_time)
+        addAll(elapsedTimeCueIds(summaryElapsedMs))
+        add(R.raw.voice_summary_completed_intervals)
+        addAll(numberCueIds(summaryCompletedIntervals))
+        add(
+            if (summaryCompletedIntervals == 1) {
+                R.raw.voice_unit_interval
+            } else {
+                R.raw.voice_unit_intervals
+            },
+        )
+    }
+
+    private fun elapsedTimeCueIds(elapsedMs: Long): List<Int> = buildList {
+        val totalSeconds = max(0L, (elapsedMs + 999L) / 1000L)
+        if (totalSeconds == 0L) {
+            add(R.raw.voice_summary_less_than_one_minute)
+            return@buildList
+        }
+        if (totalSeconds < 60L) {
+            addAll(numberCueIds(totalSeconds.toInt()))
+            add(if (totalSeconds == 1L) R.raw.voice_unit_second else R.raw.voice_unit_seconds)
+            return@buildList
         }
 
-        return resources.getIdentifier(cueName, "raw", packageName)
+        val minutes = totalSeconds / 60L
+        val seconds = totalSeconds % 60L
+        if (minutes > MAX_SUMMARY_NUMBER) {
+            add(R.raw.voice_summary_over)
+            addAll(numberCueIds(MAX_SUMMARY_NUMBER))
+            add(R.raw.voice_unit_minutes)
+            return@buildList
+        }
+
+        addAll(numberCueIds(minutes.toInt()))
+        add(if (minutes == 1L) R.raw.voice_unit_minute else R.raw.voice_unit_minutes)
+        if (seconds > 0L) {
+            add(R.raw.voice_join_and)
+            addAll(numberCueIds(seconds.toInt()))
+            add(if (seconds == 1L) R.raw.voice_unit_second else R.raw.voice_unit_seconds)
+        }
+    }
+
+    private fun numberCueIds(number: Int): List<Int> {
+        val cappedNumber = number.coerceAtMost(MAX_SUMMARY_NUMBER)
+        return buildList {
+            if (number > MAX_SUMMARY_NUMBER) {
+                add(R.raw.voice_summary_over)
+            }
+            rawResource("voice_num_$cappedNumber")?.let { add(it) }
+        }
+    }
+
+    private fun rawResource(name: String): Int? {
+        return resources.getIdentifier(name, "raw", packageName)
             .takeIf { it != 0 }
-            ?: R.raw.voice_stop
     }
 
     private fun releaseVoicePlayer() {
@@ -385,17 +466,31 @@ class IntervalService : Service() {
         return completedIntervals * INTERVAL_MS + (INTERVAL_MS - currentRemainingMs())
     }
 
-    private fun broadcastStatus() {
+    private fun broadcastStatus(showSummary: Boolean = stopping) {
+        val summaryVisible = showSummary
+        val statusCompletedIntervals = if (summaryVisible) {
+            summaryCompletedIntervals
+        } else {
+            completedIntervals
+        }
+        val statusElapsedMs = if (summaryVisible) {
+            summaryElapsedMs
+        } else {
+            elapsedMs()
+        }
+        val statusRemainingMs = if (summaryVisible) 0L else currentRemainingMs()
+
         val status = Intent(ACTION_STATUS).apply {
             setPackage(packageName)
             putExtra(EXTRA_RUNNING, running)
             putExtra(EXTRA_PAUSED, paused)
             putExtra(EXTRA_SLOW, slow)
             putExtra(EXTRA_STOPPING, stopping)
-            putExtra(EXTRA_REMAINING_MS, currentRemainingMs())
+            putExtra(EXTRA_SHOW_SUMMARY, summaryVisible)
+            putExtra(EXTRA_REMAINING_MS, statusRemainingMs)
             putExtra(EXTRA_INTERVAL_MS, INTERVAL_MS)
-            putExtra(EXTRA_COMPLETED_INTERVALS, completedIntervals)
-            putExtra(EXTRA_ELAPSED_MS, elapsedMs())
+            putExtra(EXTRA_COMPLETED_INTERVALS, statusCompletedIntervals)
+            putExtra(EXTRA_ELAPSED_MS, statusElapsedMs)
         }
         sendBroadcast(status)
     }
@@ -421,6 +516,7 @@ class IntervalService : Service() {
         const val EXTRA_PAUSED = "paused"
         const val EXTRA_SLOW = "slow"
         const val EXTRA_STOPPING = "stopping"
+        const val EXTRA_SHOW_SUMMARY = "show_summary"
         const val EXTRA_REMAINING_MS = "remaining_ms"
         const val EXTRA_INTERVAL_MS = "interval_ms"
         const val EXTRA_COMPLETED_INTERVALS = "completed_intervals"
@@ -433,7 +529,7 @@ class IntervalService : Service() {
         private const val SLOW_CUE_MS = 1_200L
         private const val FAST_CUE_PULSE_MS = 420L
         private const val FAST_CUE_GAP_MS = 260L
-        private const val STOP_SUMMARY_FALLBACK_MS = 18_000L
-        private const val MAX_STOP_SUMMARY_INTERVALS = 40
+        private const val STOP_SUMMARY_FALLBACK_MS = 24_000L
+        private const val MAX_SUMMARY_NUMBER = 180
     }
 }

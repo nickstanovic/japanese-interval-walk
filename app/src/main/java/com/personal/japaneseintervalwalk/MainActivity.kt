@@ -184,6 +184,7 @@ data class WalkUiState(
     val paused: Boolean = false,
     val slow: Boolean = true,
     val stopping: Boolean = false,
+    val showSummary: Boolean = false,
     val remainingMs: Long = IntervalService.INTERVAL_MS,
     val intervalMs: Long = IntervalService.INTERVAL_MS,
     val completedIntervals: Int = 0,
@@ -194,6 +195,7 @@ data class WalkUiState(
 
     val statusLabel: String
         get() = when {
+            showSummary && !running -> "Complete"
             stopping -> "Wrapping up"
             !running -> "Ready"
             paused -> "Paused on ${paceLabel.lowercase(Locale.US)}"
@@ -202,7 +204,7 @@ data class WalkUiState(
 
     val detailLabel: String
         get() = when {
-            stopping -> "Playing your workout summary before reset."
+            showSummary -> "Great job today. Take a breath, sip some water, and be proud of yourself."
             !running -> "Start with a slow walk."
             paused -> "Paused. Resume keeps this interval intact."
             else -> "Elapsed ${elapsedMs.formatDuration()} / current interval"
@@ -218,6 +220,7 @@ data class WalkUiState(
     val progress: Float
         get() {
             val interval = max(1L, intervalMs)
+            if (showSummary) return 1f
             val elapsedInInterval = (interval - remainingMs).coerceIn(0L, interval)
             return elapsedInInterval.toFloat() / interval.toFloat()
         }
@@ -230,6 +233,7 @@ data class WalkUiState(
                 paused = intent.getBooleanExtra(IntervalService.EXTRA_PAUSED, false),
                 slow = intent.getBooleanExtra(IntervalService.EXTRA_SLOW, true),
                 stopping = intent.getBooleanExtra(IntervalService.EXTRA_STOPPING, false),
+                showSummary = intent.getBooleanExtra(IntervalService.EXTRA_SHOW_SUMMARY, false),
                 remainingMs = intent.getLongExtra(IntervalService.EXTRA_REMAINING_MS, intervalMs),
                 intervalMs = intervalMs,
                 completedIntervals = intent.getIntExtra(IntervalService.EXTRA_COMPLETED_INTERVALS, 0),
@@ -431,16 +435,29 @@ private fun StatusPanel(state: WalkUiState) {
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Text(
-                text = "Intervals completed: ${state.completedIntervals}",
-                color = Ink.copy(alpha = 0.72f),
-                fontSize = 15.sp,
-            )
-            Text(
-                text = state.nextCueLabel,
-                color = Ink.copy(alpha = 0.72f),
-                fontSize = 15.sp,
-            )
+            if (state.showSummary) {
+                Text(
+                    text = "Total walking time: ${state.elapsedMs.formatDuration()}",
+                    color = Ink.copy(alpha = 0.72f),
+                    fontSize = 15.sp,
+                )
+                Text(
+                    text = "Completed intervals: ${state.completedIntervals}",
+                    color = Ink.copy(alpha = 0.72f),
+                    fontSize = 15.sp,
+                )
+            } else {
+                Text(
+                    text = "Intervals completed: ${state.completedIntervals}",
+                    color = Ink.copy(alpha = 0.72f),
+                    fontSize = 15.sp,
+                )
+                Text(
+                    text = state.nextCueLabel,
+                    color = Ink.copy(alpha = 0.72f),
+                    fontSize = 15.sp,
+                )
+            }
         }
     }
 }
