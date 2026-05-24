@@ -1,6 +1,13 @@
-# Japanese Interval Walk
+<h1 align="center">Japanese Interval Walk</h1>
 
-A personal Android interval-walking app for a Pixel 10 Pro.
+<p align="center">A personal Android interval-walking app for a Pixel 10 Pro.</p>
+
+<p align="center">
+  <img src="docs/images/interval-walk-ready.png" alt="Ready slow walk state" width="160">
+  <img src="docs/images/interval-walk-paused-slow.png" alt="Paused slow walk state" width="160">
+  <img src="docs/images/interval-walk-fast.png" alt="Fast walk state" width="160">
+  <img src="docs/images/interval-walk-summary.png" alt="Workout summary state" width="160">
+</p>
 
 The timer alternates forever between:
 
