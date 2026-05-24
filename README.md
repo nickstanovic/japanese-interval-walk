@@ -11,7 +11,9 @@ The app includes pause/resume so a shoe tie or sit-down rest does not consume in
 
 The app is written in Kotlin with Jetpack Compose and Material 3.
 
-Voice clips are generated locally with a natural, upbeat native-English female voice, `en-US-EmmaNeural`, using a modestly faster pace and tiny pitch lift. The finished MP3 clips are bundled into the APK for offline playback.
+Voice clips are generated locally with Kokoro-82M's English `af_heart` voice. Kokoro-82M is listed by its upstream model card as Apache-2.0 licensed, and this app bundles only the generated MP3 cues for offline playback; it does not bundle Kokoro model weights or call any online TTS API at runtime.
+
+Voice asset attribution: generated with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), `af_heart` voice, Apache-2.0 model license.
 
 ## Build
 
