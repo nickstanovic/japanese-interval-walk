@@ -50,3 +50,12 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 ```
 
 The emulator screenshots captured during testing are saved as `emulator-compose-home.png`, `emulator-compose-running.png`, and `emulator-compose-paused.png`.
+
+## Install Note
+
+This app is an Android APK, so it works on Android phones only. It will not install on an iPhone or iPad.
+
+If someone is new to APKs, the official Android docs are a good starting point:
+
+- [Android Debug Bridge: install an app](https://developer.android.com/tools/adb)
+- [Android Help: download apps to your Android device](https://support.google.com/android/answer/9457058)
