@@ -1,6 +1,6 @@
 <h1 align="center">Japanese Interval Walk</h1>
 
-<p align="center">A personal Android interval-walking app for a Pixel 10 Pro.</p>
+<p align="center">A personal Android interval-walking app optimized for Pixel 10 Pro and adaptable to modern Android phones.</p>
 
 <p align="center">
   <img src="docs/images/interval-walk-ready.png" alt="Ready slow walk state" width="160">
